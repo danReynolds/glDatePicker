@@ -6,6 +6,11 @@
  * Released under the MIT license.
  *
  * Date: Tue Jan 1 2013
+ *
+ * ----------------------
+ * Forked By Dan Reynolds
+ * Date: Thu Mar 6 2014
+ * ----------------------
  */
  ;(function() {
 	$.fn.glDatePicker = function(options) {
@@ -37,8 +42,13 @@
 		// The z-index for the calendar control.
 		zIndex: 1000,
 
+		// Width (and height) of the calendar control. If not specified, default to textbox input width.
+		width: null,
+
 		// Thickness of border (in pixels)
 		borderSize: 1,
+
+		legend: false, //append a legend to indicate the symbol for special dates
 
 		// The number of pixels to offset the calendar's position on the page.
 		calendarOffset: { x: 0, y: 1 },
@@ -73,35 +83,23 @@
 		// the repeatYear or repeatMonth flag to true.
 		// By default repeatYear and repeatMonth are false.
 		//
-		// This example creates 4-individual dates that can be selected;
+		// This example creates 2-individual dates that can be selected;
 		// The first date will repeat every year, the second date will repeat every
 		// month and year, the third date will repeat every month and the fourth date
 		// will only be selectable one-time and not repeat:
 		//
 		//    selectableDates: [
-		//        { date: new Date(0, 8, 5), repeatYear: true },
-		//        { date: new Date(0, 0, 14), repeatMonth: true, repeatYear: true },
-		//        { date: new Date(2013, 0, 24), repeatMonth: true },
-		//        { date: new Date(2013, 11, 25) },
-		//    ]
+		//        { date: "2012-02-02", repeatYear: true },
+		//        { date: "2014-03-02", repeatMonth: true, repeatYear: true }
+		// 		]
 		selectableDates: null,
 
 		// A collection of date ranges that are selectable by the user.
 		// The ranges can be made to repeat by setting repeatYear to true
 		// (repeatMonth is not supported).
 		//
-		// This example will create 3-sets of selectable date ranges with
-		// specific from and to ranges.  The 4th and 5th ranges don't specify
-		// the "to" date in which case the "to" date will be the maximum days for
-		// the month specified in "from".  The 4th and 5th ranges also repeat every year:
-		//
-		//     selectableDateRange: [
-		//         { from: new Date(2013, 1, 1), to: newDate (2013, 2, 1) },
-		//         { from: new Date(2013, 4, 1), to: newDate (2013, 8, 1) },
-		//         { from: new Date(2013, 7, 10), to: newDate (2013, 9, 10) },
-		//         { from: new Date(0, 8, 10), repeatYear: true }
-		//         { from: new Date(0, 9, 1), repeatYear: true }
-		//     ]
+		// ranges are of the form:
+		// [{ from: "2012-02-11", to: "2013-02-11 "}]
 		selectableDateRange: null,
 
 		// Mark certain dates as special dates.  Similar to selectableDates, this
@@ -110,22 +108,11 @@
 		// data attached to it that will be returned in the onClick callback.
 		// The data field can be any custom (JSON style) object.
 		//
-		// This example creates two (repeatable by year) dates with special data in them.
-		// The first date also assigns a special class (which you will have to define).
-		//    specialDates: [
-		//        {
-		//            date: new Date(0, 8, 5),
-		//            data: { message: 'Happy Birthday!' },
-		//            repeatYear: true,
-		//            cssClass: 'special-bday'
-		//        },
-		//        {
-		//            date: new Date(2013, 0, 8),
-		//            data: { message: 'Meeting every day 8 of the month' },
-		//            repeatMonth: true
-		//        }
-		//    ]
+		// ranges are of the form:
+		// [{ date: "2012-02-11"}]
 		specialDates: null,
+
+		specialDatesRange: null,
 
 		// List of months that can be selectable, including when the user clicks
 		// on the title to select from the dropdown.
@@ -231,7 +218,6 @@
 					self.hide();
 				}
 			});
-
 			// Render calendar
 			self.render();
 		};
@@ -285,7 +271,7 @@
 					if(userList) {
 						var newList = [];
 						$.each(userList, function(i, v) {
-							if(v >= min && v <= max && newList._indexOf(v) < 0) {
+							if(v >= min && v <= max && newList.indexOf(v) < 0) {
 								newList.push(v);
 							}
 						});
@@ -306,8 +292,8 @@
 				var dowNames = options.dowNames || [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ];
 				var monthNames = options.monthNames || [ 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December' ];
 
-				// Create cell width based on el size
-				var containerWidth = el.outerWidth();
+				// Create cell width based on el size or width parameter
+				var containerWidth = (isNaN(options.width)) ? el.outerWidth() : options.width;
 				var containerHeight = containerWidth;
 
 				// Create cell size based on container size
@@ -405,9 +391,9 @@
 						var dateYear = dateVal.year;
 
 						// Find the month first
-						if(selectableMonths._indexOf(dateMonth) != -1) {
+						if(selectableMonths.indexOf(dateMonth) != -1) {
 							// If year is in our collection, break...
-							if(selectableYears._indexOf(dateYear) != -1) {
+							if(selectableYears.indexOf(dateYear) != -1) {
 								break;
 							}
 							else {
@@ -559,8 +545,8 @@
 							if(options.selectableDateRange) {
 								isSelectable = false;
 								$.each(options.selectableDateRange, function(i, v) {
-									var dateFrom = v.from;
-									var dateTo = (v.to || null);
+									var dateFrom = new Date(v.from);
+									var dateTo = (new Date(v.to) || null);
 
 									// If to is not specified, default to max days in the from month
 									dateTo = dateTo || new Date(v.from.getFullYear(), v.from.getMonth(), v.from._max());
@@ -583,7 +569,9 @@
 									isSelectable = false;
 								}
 								$.each(options.selectableDates, function(i, v) {
-									var vDate = getRepeatDate(v, v.date);
+									date = new Date(v.date);
+									utc_date = new Date(date.getTime() + (date.getTimezoneOffset() * 60000));
+									var vDate = getRepeatDate(v, utc_date);
 
 									if(vDate.time == cellDateTime) {
 										return (isSelectable = true);
@@ -593,9 +581,9 @@
 
 							// If not active or if not within selectableMonths, set to noday otherwise evaluate accordingly
 							if(!isSelectable ||
-								selectableYears._indexOf(cellDateVal.year) < 0 ||
-								selectableMonths._indexOf(cellDateVal.month) < 0 ||
-								selectableDOW._indexOf(cellDateVal.day) < 0) {
+								selectableYears.indexOf(cellDateVal.year) < 0 ||
+								selectableMonths.indexOf(cellDateVal.month) < 0 ||
+								selectableDOW.indexOf(cellDateVal.day) < 0) {
 								cellClass = 'noday';
 							}
 							else {
@@ -610,10 +598,12 @@
 								// Handle special dates
 								if(options.specialDates) {
 									$.each(options.specialDates, function(i, v) {
-										var vDate = getRepeatDate(v, v.date);
+										date = new Date(v.date);
+										utc_date = new Date(date.getTime() + (date.getTimezoneOffset() * 60000));
+										var vDate = getRepeatDate(v, utc_date);
 
 										if(vDate.time == cellDateTime) {
-											cellClass = (v.cssClass || 'special');
+											cellClass = cellClass + " " + (v.cssClass || 'special');
 											cellZIndex += 52;
 											specialData = v.data;
 										}
@@ -730,7 +720,7 @@
 
 				// Populate month select
 				$.each(monthNames, function(i, v) {
-					if(options.allowMonthSelect && selectableMonths._indexOf(i) != -1) {
+					if(options.allowMonthSelect && selectableMonths.indexOf(i) != -1) {
 						var o = $('<option/>').html(v).attr('value', i);
 						if(i == firstDateMonth) { o.attr('selected', 'selected');}
 						monthSelect.append(o);
@@ -755,6 +745,10 @@
 				// Add to title
 				titleCell.children().remove();
 				titleCell.append(titleYearMonth);
+
+				if (options.legend) {
+					calendar.append("<div class='special-legend'> Special <img src = '/assets/special_triangle.png' > </div>");
+				}
 
 				// Run the callback signaling end of the render
 				renderCalback = renderCalback || (function() {});
@@ -810,9 +804,6 @@
 				day: this.getDay()
 			};
 		};
-
-		Array.prototype._indexOf = function(value) {
-			return $.inArray(value, this);
-		}
 	})();
 })();
+
